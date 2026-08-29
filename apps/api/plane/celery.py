@@ -41,6 +41,11 @@ app = Celery("plane")
 # pickle the object when using Windows.
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
+# Amazon MQ RabbitMQ quorum queue compatibility
+app.conf.task_default_queue_type = "quorum"
+app.conf.worker_detect_quorum_queues = True
+app.conf.broker_transport_options = {"confirm_publish": True}
+
 app.conf.beat_schedule = {
     # Intra day recurring jobs
     "check-every-five-minutes-to-send-email-notifications": {
