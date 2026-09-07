@@ -118,3 +118,14 @@ packages/i18n/src/types/keys.generated.ts
 # Local security notes (not for version control)
 /security/
 ClickOps SS/
+
+
+# Terraform
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/*.tfstate
+infra/*.tfstate.*
+infra/crash.log
+infra/crash.*.log
+infra/*.tfplan
+*.tfvars
