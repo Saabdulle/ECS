@@ -1,0 +1,163 @@
+services:
+
+  web:
+    image: plane-web:local
+    container_name: plane-web
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  admin:
+    image: plane-admin:local
+    container_name: plane-admin
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+
+  space:
+    image: plane-space:local
+    container_name: plane-space
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+
+  live:
+    image: plane-live:local
+    container_name: plane-live
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      API_BASE_URL: ${API_BASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      LIVE_SERVER_SECRET_KEY: ${LIVE_SERVER_SECRET_KEY}
+    depends_on:
+      - api
+      - plane-redis
+
+  api:
+    image: plane-api:local
+    container_name: plane-api
+    restart: unless-stopped
+    command: ./bin/docker-entrypoint-api.sh
+    env_file:
+      - ./.env
+    depends_on:
+      - plane-db
+      - plane-redis
+      - plane-mq
+
+  proxy:
+    build:
+      context: ./app/apps/proxy
+      dockerfile: Dockerfile.ce
+    container_name: plane-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      SITE_ADDRESS: ":80"
+      FILE_SIZE_LIMIT: ${FILE_SIZE_LIMIT}
+      BUCKET_NAME: ${AWS_S3_BUCKET_NAME}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES}
+      CERT_EMAIL: ""
+      CERT_ACME_DNS: ""
+    depends_on:
+      - web
+      - admin
+      - space
+      - live
+      - api
+      - plane-minio
+  worker:
+    image: plane-api:local
+    container_name: plane-worker
+    restart: unless-stopped
+    command: ./bin/docker-entrypoint-worker.sh
+    env_file:
+      - ./.env
+    depends_on:
+      - api
+      - plane-db
+      - plane-redis
+      - plane-mq
+
+  beat-worker:
+    image: plane-api:local
+    container_name: plane-beat-worker
+    restart: unless-stopped
+    command: ./bin/docker-entrypoint-beat.sh
+    env_file:
+      - ./.env
+    depends_on:
+      - api
+      - plane-db
+      - plane-redis
+      - plane-mq
+
+  migrator:
+    image: plane-api:local
+    container_name: plane-migrator
+    restart: "no"
+    command: ./bin/docker-entrypoint-migrator.sh
+    env_file:
+      - ./.env
+    depends_on:
+      - plane-db
+      - plane-redis
+
+  plane-db:
+    image: postgres:15.7-alpine
+    container_name: plane-db
+    restart: unless-stopped
+    command: postgres -c 'max_connections=1000'
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: ${PGDATA}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  plane-redis:
+    image: valkey/valkey:7.2.11-alpine
+    container_name: plane-redis
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  plane-mq:
+    image: rabbitmq:3.13.6-management-alpine
+    container_name: plane-mq
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  plane-minio:
+    image: minio/minio
+    container_name: plane-minio
+    restart: unless-stopped
+    command: server /export --console-address ":9090"
+    env_file:
+      - ./.env
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY}
+    volumes:
+      - uploads:/export
+
+volumes:
+  pgdata:
+  redisdata:
+  rabbitmq_data:
+  uploads:
