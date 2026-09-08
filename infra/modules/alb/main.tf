@@ -154,19 +154,9 @@ resource "aws_lb_target_group" "plane_live_tg" {
   }
 }
 
-resource "aws_lb_listener" "plane_http_listener" {
-  load_balancer_arn = aws_lb.plane_alb.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.plane_web_tg.arn
-  }
-}
 
 resource "aws_lb_listener_rule" "plane_admin_rule" {
-  listener_arn = aws_lb_listener.plane_http_listener.arn
+  listener_arn = aws_lb_listener.plane_https_listener.arn
   priority     = 10
 
   action {
@@ -182,7 +172,7 @@ resource "aws_lb_listener_rule" "plane_admin_rule" {
 }
 
 resource "aws_lb_listener_rule" "plane_space_rule" {
-  listener_arn = aws_lb_listener.plane_http_listener.arn
+  listener_arn = aws_lb_listener.plane_https_listener.arn
   priority     = 20
 
   action {
@@ -198,7 +188,7 @@ resource "aws_lb_listener_rule" "plane_space_rule" {
 }
 
 resource "aws_lb_listener_rule" "plane_api_rule" {
-  listener_arn = aws_lb_listener.plane_http_listener.arn
+  listener_arn = aws_lb_listener.plane_https_listener.arn
   priority     = 30
 
   action {
@@ -214,12 +204,12 @@ resource "aws_lb_listener_rule" "plane_api_rule" {
 }
 
 resource "aws_lb_listener_rule" "plane_auth_rule" {
-  listener_arn = aws_lb_listener.plane_http_listener.arn
+  listener_arn = aws_lb_listener.plane_https_listener.arn
   priority     = 40
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.plane_live_tg.arn
+    target_group_arn = aws_lb_target_group.plane_api_tg.arn
   }
 
   condition {
@@ -230,7 +220,7 @@ resource "aws_lb_listener_rule" "plane_auth_rule" {
 }
 
 resource "aws_lb_listener_rule" "plane_live_rule" {
-  listener_arn = aws_lb_listener.plane_http_listener.arn
+  listener_arn = aws_lb_listener.plane_https_listener.arn
   priority     = 50
 
   action {
@@ -242,5 +232,32 @@ resource "aws_lb_listener_rule" "plane_live_rule" {
     path_pattern {
       values = ["/live/*", "/live"]
     }
+  }
+}
+resource "aws_lb_listener" "plane_http_listener" {
+  load_balancer_arn = aws_lb.plane_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+resource "aws_lb_listener" "plane_https_listener" {
+  load_balancer_arn = aws_lb.plane_alb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = var.certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.plane_web_tg.arn
   }
 }

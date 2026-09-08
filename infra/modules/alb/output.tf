@@ -72,3 +72,7 @@ output "live_rule_arn" {
   description = "ARN of the live listener rule"
   value       = aws_lb_listener_rule.plane_live_rule.arn
 }
+output "https_listener_arn" {
+  description = "ARN of the HTTPS listener"
+  value       = aws_lb_listener.plane_https_listener.arn
+}
