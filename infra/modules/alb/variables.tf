@@ -11,3 +11,8 @@ variable "public_subnets_ids" {
   description = "Public subnets ids for the ALB"
   type        = list(string)
 }
+# variable "certificate_arn" {
+#   description = "ARN of the ACM certificate used by the HTTPS listener"
+#   type        = string
+#   default     = null
+# }
