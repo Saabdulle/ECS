@@ -1,18 +1,6 @@
-variable "aws_region" {
-  description = "Local AWS region"
-  type        = string
-  default     = "eu-west-2"
-}
-
-variable "aws_profile" {
-  description = "Local AWS profile"
-  type        = string
-  default     = "plane-ecs"
-}
 variable "project_name" {
-  description = "Project name"
+  description = "Name of the project"
   type        = string
-  default     = "ecs-plane"
 }
 
 variable "vpc_cidr" {
@@ -31,6 +19,6 @@ variable "private_subnet_cidrs" {
 }
 
 variable "availability_zones" {
-  description = "Availability zones"
+  description = "Availability zones used by the VPC"
   type        = list(string)
 }
