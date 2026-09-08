@@ -19,3 +19,8 @@ module "alb" {
   public_subnets_ids = module.vpc.public_subnet_ids
 }
 
+module "acm" {
+  source       = "./modules/acm"
+  project_name = var.project_name
+  domain_name  = var.domain_name
+}

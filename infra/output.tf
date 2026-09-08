@@ -81,3 +81,8 @@ output "api_target_group_arn" {
 output "live_target_group_arn" {
   value = module.alb.live_target_group_arn
 }
+
+output "acm_validation_records" {
+  description = "Cloudflare DNS records required to validate ACM certificate"
+  value       = module.acm.validation_records
+}
