@@ -119,7 +119,6 @@ packages/i18n/src/types/keys.generated.ts
 /security/
 ClickOps SS/
 
-
 # Terraform
 infra/.terraform/
 infra/.terraform.lock.hcl
