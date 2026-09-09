@@ -39,3 +39,33 @@ variable "domain_name" {
   description = "Application domain name"
   type        = string
 }
+
+variable "web_image_tag" {
+  description = "Web image tag"
+  type        = string
+  default     = "web-0.0.1"
+}
+
+variable "admin_image_tag" {
+  description = "Admin image tag"
+  type        = string
+  default     = "admin-0.0.1"
+}
+
+variable "space_image_tag" {
+  description = "Space image tag"
+  type        = string
+  default     = "space-0.0.1"
+}
+
+variable "api_image_tag" {
+  description = "API image tag"
+  type        = string
+  default     = "api-0.0.1"
+}
+
+variable "live_image_tag" {
+  description = "Live image tag"
+  type        = string
+  default     = "live-0.0.1"
+}

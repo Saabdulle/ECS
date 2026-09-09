@@ -1,4 +1,4 @@
-resource "aws_ecr_repository" "plane-ecr" {
+resource "aws_ecr_repository" "plane_ecr" {
   name                 = var.repository_name
   image_tag_mutability = "MUTABLE"
   force_delete         = false
@@ -8,5 +8,8 @@ resource "aws_ecr_repository" "plane-ecr" {
   }
   lifecycle {
     prevent_destroy = true
+  }
+  tags = {
+    Name = var.repository_name
   }
 }

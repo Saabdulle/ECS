@@ -39,9 +39,18 @@ module "ecs" {
 
   ecr_repository_url = module.ecr.repository_url
 
-  web_target_group_arn   = module.alb.web_target_group_arn
+  web_target_group_arn = module.alb.web_target_group_arn
+  web_image_tag        = var.web_image_tag
+
   admin_target_group_arn = module.alb.admin_target_group_arn
+  admin_image_tag        = var.admin_image_tag
+
   space_target_group_arn = module.alb.space_target_group_arn
-  api_target_group_arn   = module.alb.api_target_group_arn
-  live_target_group_arn  = module.alb.live_target_group_arn
+  space_image_tag        = var.space_image_tag
+
+  api_target_group_arn = module.alb.api_target_group_arn
+  # api_image_tag        = var.api_image_tag
+
+  live_target_group_arn = module.alb.live_target_group_arn
+  # live_image_tag        = var.live_image_tag
 }
