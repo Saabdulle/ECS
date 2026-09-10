@@ -98,8 +98,38 @@ resource "aws_ecs_service" "rabbitmq" {
     security_groups  = [aws_security_group.rabbitmq_sg.id]
     assign_public_ip = false
   }
+  service_registries {
+    registry_arn = aws_service_discovery_service.rabbitmq.arn
+  }
 
   tags = {
     Name = "${var.project_name}-rabbitmq-service"
+  }
+}
+
+resource "aws_service_discovery_private_dns_namespace" "plane" {
+  name = "${var.project_name}.local"
+  vpc  = var.vpc_id
+
+  tags = {
+    Name = "${var.project_name}-namespace"
+  }
+}
+
+resource "aws_service_discovery_service" "rabbitmq" {
+  name = "rabbitmq"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.plane.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+    tags = {
+    Name = "${var.project_name}-rabbitmq-discovery"
   }
 }

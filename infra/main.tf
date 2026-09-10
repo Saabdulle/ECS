@@ -53,6 +53,21 @@ module "ecs" {
 
   live_target_group_arn = module.alb.live_target_group_arn
   # live_image_tag        = var.live_image_tag
+  db_endpoint = module.rds.db_endpoint
+  db_port     = module.rds.db_port
+  db_name     = var.db_name
+  db_username = var.db_username
+  db_password = var.db_password
+
+  redis_endpoint = module.redis.redis_endpoint
+  redis_port     = module.redis.redis_port
+
+  rabbitmq_host     = module.rabbitmq.rabbitmq_host
+  rabbitmq_username = var.rabbitmq_username
+  rabbitmq_password = var.rabbitmq_password
+
+  secret_key     = var.secret_key
+  s3_bucket_name = module.s3.bucket_name
 }
 
 module "rds" {
@@ -90,4 +105,12 @@ module "rabbitmq" {
   cloudwatch_log_group_name = module.ecs.cloudwatch_log_group_name
   rabbitmq_username         = var.rabbitmq_username
   rabbitmq_password         = var.rabbitmq_password
+}
+
+module "s3" {
+  source = "./modules/s3"
+
+  project_name       = var.project_name
+  aws_region         = var.aws_region
+  ecs_task_role_name = module.ecs.task_role_name
 }

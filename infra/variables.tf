@@ -92,3 +92,8 @@ variable "rabbitmq_password" {
   type        = string
   sensitive   = true
 }
+variable "secret_key" {
+  description = "Secret key for the application"
+  type        = string
+  sensitive   = true
+}

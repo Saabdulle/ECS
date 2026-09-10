@@ -82,3 +82,53 @@ variable "live_image_tag" {
   type        = string
   default     = "live-0.0.1"
 }
+variable "db_endpoint" {
+  type = string
+}
+
+variable "db_port" {
+  type = number
+}
+
+variable "db_name" {
+  type = string
+}
+
+variable "db_username" {
+  type = string
+}
+
+variable "db_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "redis_endpoint" {
+  type = string
+}
+
+variable "redis_port" {
+  type = number
+}
+
+variable "rabbitmq_host" {
+  type = string
+}
+
+variable "rabbitmq_username" {
+  type = string
+}
+
+variable "rabbitmq_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "secret_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "s3_bucket_name" {
+  type = string
+}

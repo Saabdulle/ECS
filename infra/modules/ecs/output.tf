@@ -34,3 +34,7 @@ output "cloudwatch_log_group_name" {
   description = "CloudWatch log group name for ECS tasks"
   value       = aws_cloudwatch_log_group.ecs_logs.name
 }
+output "task_role_name" {
+  description = "ECS task role name"
+  value       = aws_iam_role.ecs_task_role.name
+}
