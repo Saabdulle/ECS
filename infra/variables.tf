@@ -69,3 +69,26 @@ variable "live_image_tag" {
   type        = string
   default     = "live-0.0.1"
 }
+variable "db_name" {
+  description = "Database name"
+  type        = string
+}
+variable "db_username" {
+  description = "Database username"
+  type        = string
+}
+
+variable "db_password" {
+  description = "Database password"
+  type        = string
+  sensitive   = true
+}
+variable "rabbitmq_username" {
+  description = "RabbitMQ username"
+  type        = string
+}
+variable "rabbitmq_password" {
+  description = "RabbitMQ password"
+  type        = string
+  sensitive   = true
+}

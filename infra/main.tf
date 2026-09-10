@@ -54,3 +54,40 @@ module "ecs" {
   live_target_group_arn = module.alb.live_target_group_arn
   # live_image_tag        = var.live_image_tag
 }
+
+module "rds" {
+  source = "./modules/rds"
+
+  project_name          = var.project_name
+  vpc_id                = module.vpc.vpc_id
+  private_subnet_ids    = module.vpc.private_subnet_ids
+  ecs_security_group_id = module.ecs.ecs_security_group_id
+  db_name               = var.db_name
+  db_username           = var.db_username
+  db_password           = var.db_password
+}
+
+module "redis" {
+  source = "./modules/redis"
+
+  project_name          = var.project_name
+  vpc_id                = module.vpc.vpc_id
+  private_subnet_ids    = module.vpc.private_subnet_ids
+  ecs_security_group_id = module.ecs.ecs_security_group_id
+}
+
+module "rabbitmq" {
+  source = "./modules/rabbitmq"
+
+  project_name              = var.project_name
+  aws_region                = var.aws_region
+  vpc_id                    = module.vpc.vpc_id
+  private_subnet_ids        = module.vpc.private_subnet_ids
+  ecs_cluster_id            = module.ecs.cluster_id
+  ecs_execution_role_arn    = module.ecs.execution_role_arn
+  ecs_task_role_arn         = module.ecs.task_role_arn
+  ecs_security_group_id     = module.ecs.ecs_security_group_id
+  cloudwatch_log_group_name = module.ecs.cloudwatch_log_group_name
+  rabbitmq_username         = var.rabbitmq_username
+  rabbitmq_password         = var.rabbitmq_password
+}

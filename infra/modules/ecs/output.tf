@@ -22,3 +22,15 @@ output "web_service_name" {
   description = "Web ECS service name"
   value       = aws_ecs_service.web.name
 }
+output "execution_role_arn" {
+  description = "ECS execution role ARN"
+  value       = aws_iam_role.ecs_execution_role.arn
+}
+output "task_role_arn" {
+  description = "ECS task role ARN"
+  value       = aws_iam_role.ecs_task_role.arn
+}
+output "cloudwatch_log_group_name" {
+  description = "CloudWatch log group name for ECS tasks"
+  value       = aws_cloudwatch_log_group.ecs_logs.name
+}
