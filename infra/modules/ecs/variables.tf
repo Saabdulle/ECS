@@ -132,3 +132,11 @@ variable "secret_key" {
 variable "s3_bucket_name" {
   type = string
 }
+variable "live_server_secret_key" {
+  type      = string
+  sensitive = true
+}
+variable "domain_name" {
+  description = "Domain name for the application"
+  type        = string
+}

@@ -29,9 +29,9 @@ module "acm" {
 module "ecs" {
   source = "./modules/ecs"
 
-  project_name = var.project_name
-  aws_region   = var.aws_region
-
+  project_name       = var.project_name
+  aws_region         = var.aws_region
+  domain_name        = var.domain_name
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
 
@@ -68,6 +68,8 @@ module "ecs" {
 
   secret_key     = var.secret_key
   s3_bucket_name = module.s3.bucket_name
+
+  live_server_secret_key = var.live_server_secret_key
 }
 
 module "rds" {

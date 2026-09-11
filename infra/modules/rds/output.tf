@@ -1,5 +1,5 @@
 output "db_endpoint" {
-  value = aws_db_instance.plane_postgres.endpoint
+  value = aws_db_instance.plane_postgres.address
 }
 output "db_port" {
   value = aws_db_instance.plane_postgres.port

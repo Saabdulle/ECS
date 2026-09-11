@@ -122,7 +122,7 @@ resource "aws_lb_target_group" "plane_api_tg" {
     protocol            = "HTTP"
     matcher             = "200-399"
     interval            = 30
-    timeout             = 5
+    timeout             = 10
     healthy_threshold   = 2
     unhealthy_threshold = 3
   }
@@ -142,7 +142,7 @@ resource "aws_lb_target_group" "plane_live_tg" {
   health_check {
     path                = "/live/"
     protocol            = "HTTP"
-    matcher             = "200-399"
+    matcher             = "200-404"
     interval            = 30
     timeout             = 5
     healthy_threshold   = 2
@@ -166,7 +166,30 @@ resource "aws_lb_listener_rule" "plane_admin_rule" {
 
   condition {
     path_pattern {
-      values = ["/god-mode/*", "/god-mode"]
+      values = ["/god-mode/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "god_mode_redirect" {
+  listener_arn = aws_lb_listener.plane_https_listener.arn
+  priority     = 9
+
+  action {
+    type = "redirect"
+
+    redirect {
+      protocol    = "HTTPS"
+      host        = "#{host}"
+      path        = "/god-mode/"
+      query       = "#{query}"
+      status_code = "HTTP_301"
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/god-mode"]
     }
   }
 }

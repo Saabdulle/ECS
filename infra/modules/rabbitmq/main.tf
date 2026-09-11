@@ -129,7 +129,7 @@ resource "aws_service_discovery_service" "rabbitmq" {
 
     routing_policy = "MULTIVALUE"
   }
-    tags = {
+  tags = {
     Name = "${var.project_name}-rabbitmq-discovery"
   }
 }

@@ -97,3 +97,8 @@ variable "secret_key" {
   type        = string
   sensitive   = true
 }
+variable "live_server_secret_key" {
+  description = "Secret key for the live server"
+  type        = string
+  sensitive   = true
+}
