@@ -86,3 +86,7 @@ output "acm_validation_records" {
   description = "Cloudflare DNS records required to validate ACM certificate"
   value       = module.acm.validation_records
 }
+output "route53_name_servers" {
+  description = "Name servers of the Route 53 hosted zone"
+  value       = module.route53.name_servers
+}

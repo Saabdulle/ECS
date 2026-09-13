@@ -116,3 +116,12 @@ module "s3" {
   aws_region         = var.aws_region
   ecs_task_role_name = module.ecs.task_role_name
 }
+
+module "route53" {
+  source       = "./modules/route53"
+  project_name = var.project_name
+  domain_name  = var.domain_name
+
+  alb_dns_name = module.alb.alb_dns_name
+  alb_zone_id  = module.alb.alb_zone_id
+}
