@@ -1,0 +1,72 @@
+name: Project Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  terraform:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform format check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+  dockerfiles:
+    name: Dockerfile Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check required Dockerfiles
+        run: |
+          test -f docker/web.Dockerfile
+          test -f docker/admin.Dockerfile
+          test -f docker/space.Dockerfile
+          test -f docker/api.Dockerfile
+          test -f docker/live.Dockerfile
+
+          echo "Required Dockerfiles are present."
+
+      - name: Checking API build context
+        run: |
+          test -f app/apps/api/manage.py
+          test -f app/apps/api/requirements.txt
+          test -d app/apps/api/bin
+          test -d app/apps/api/plane
+
+          echo "Valid API build context."
+
+  circleci:
+    name: CircleCI Config Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check CircleCI config exists
+        run: |
+          test -f .circleci/config.yml
+          echo "CircleCI config file present."
