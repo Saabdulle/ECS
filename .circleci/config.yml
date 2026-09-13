@@ -4,6 +4,7 @@ orbs:
   aws-cli: circleci/aws-cli@5.4.1
 
 jobs:
+  # BUILD AND PUSH DOCKER IMAGES
   build-and-push-images:
     docker:
       - image: cimg/base:current
@@ -18,11 +19,40 @@ jobs:
       - aws-cli/setup:
           role_arn: ${AWS_ROLE_ARN}
           region: ${AWS_REGION}
-          role_session_name: circleci-ecs-project
+          role_session_name: circleci-ecs-build
 
       - run:
-          name: Configure AWS values
+          name: Validate environment variables
           command: |
+            set -e
+
+            test -n "${AWS_REGION}" || {
+              echo "AWS_REGION is missing"
+              exit 1
+            }
+
+            test -n "${AWS_ROLE_ARN}" || {
+              echo "AWS_ROLE_ARN is missing"
+              exit 1
+            }
+
+            test -n "${ECR_REPOSITORY}" || {
+              echo "ECR_REPOSITORY is missing"
+              exit 1
+            }
+
+            test -n "${APP_DOMAIN}" || {
+              echo "APP_DOMAIN is missing"
+              exit 1
+            }
+
+            echo "All environment variables are present."
+
+      - run:
+          name:  AWS values configuration
+          command: |
+            set -e
+
             AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
               --query Account \
               --output text)
@@ -39,6 +69,8 @@ jobs:
       - run:
           name: Login to Amazon ECR
           command: |
+            set -e
+
             aws ecr get-login-password \
               --region "${AWS_REGION}" \
             | docker login \
@@ -46,9 +78,12 @@ jobs:
               --password-stdin \
               "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
+      # WEB
       - run:
           name: Build Web image
           command: |
+            set -e
+
             docker build \
               --platform linux/arm64 \
               --build-arg VITE_API_BASE_URL="https://${APP_DOMAIN}" \
@@ -65,9 +100,12 @@ jobs:
               -t "${ECR_URI}:web-${IMAGE_TAG}" \
               app/
 
+      # ADMIN / GOD MODE
       - run:
           name: Build Admin image
           command: |
+            set -e
+
             docker build \
               --platform linux/arm64 \
               --build-arg VITE_API_BASE_URL="https://${APP_DOMAIN}" \
@@ -84,9 +122,12 @@ jobs:
               -t "${ECR_URI}:admin-${IMAGE_TAG}" \
               app/
 
+      # SPACE
       - run:
           name: Build Space image
           command: |
+            set -e
+
             docker build \
               --platform linux/arm64 \
               --build-arg VITE_API_BASE_URL="https://${APP_DOMAIN}" \
@@ -103,24 +144,34 @@ jobs:
               -t "${ECR_URI}:space-${IMAGE_TAG}" \
               app/
 
+      # API
+      #
+      # Important:
+      # API uses app/apps/api as its Docker build context.
       - run:
           name: Build API image
           command: |
+            set -e
+
             docker build \
               --platform linux/arm64 \
               -f docker/api.Dockerfile \
               -t "${ECR_URI}:api-${IMAGE_TAG}" \
               app/apps/api/
 
+      # LIVE
       - run:
           name: Build Live image
           command: |
+            set -e
+
             docker build \
               --platform linux/arm64 \
               -f docker/live.Dockerfile \
               -t "${ECR_URI}:live-${IMAGE_TAG}" \
               app/
 
+      # PUSH IMAGES
       - run:
           name: Push Web image
           command: |
@@ -149,6 +200,8 @@ jobs:
       - run:
           name: Verify images in ECR
           command: |
+            set -e
+
             aws ecr describe-images \
               --repository-name "${ECR_REPOSITORY}" \
               --region "${AWS_REGION}" \
@@ -159,7 +212,322 @@ jobs:
                 imageTag=api-${IMAGE_TAG} \
                 imageTag=live-${IMAGE_TAG}
 
+
+  # CD - DEPLOY NEW IMAGES TO ECS
+  deploy-to-ecs:
+    docker:
+      - image: cimg/aws:2025.01
+
+    steps:
+      - checkout
+
+      - aws-cli/setup:
+          role_arn: ${AWS_ROLE_ARN}
+          region: ${AWS_REGION}
+          role_session_name: circleci-ecs-deploy
+
+      - run:
+          name: Install jq
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y jq
+
+      - run:
+          name: Configure deployment values
+          command: |
+            set -e
+
+            AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+              --query Account \
+              --output text)
+
+            echo "export AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}" >> "$BASH_ENV"
+            echo "export ECR_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}" >> "$BASH_ENV"
+            echo 'export IMAGE_TAG=${CIRCLE_SHA1:0:7}' >> "$BASH_ENV"
+
+      - run:
+          name: Verify deployment images exist
+          command: |
+            set -e
+
+            aws ecr describe-images \
+              --repository-name "${ECR_REPOSITORY}" \
+              --region "${AWS_REGION}" \
+              --image-ids \
+                imageTag=web-${IMAGE_TAG} \
+                imageTag=admin-${IMAGE_TAG} \
+                imageTag=space-${IMAGE_TAG} \
+                imageTag=api-${IMAGE_TAG} \
+                imageTag=live-${IMAGE_TAG}
+
+      # CREATE NEW TASK DEFINITION REVISIONS
+      - run:
+          name: Register new ECS task definitions
+          command: |
+            set -e
+
+            register_task() {
+              FAMILY="$1"
+              IMAGE="$2"
+              VARIABLE_NAME="$3"
+
+              echo "Preparing ${FAMILY} with image ${IMAGE}"
+
+              aws ecs describe-task-definition \
+                --task-definition "${FAMILY}" \
+                --region "${AWS_REGION}" \
+                --query 'taskDefinition' \
+                --output json \
+              | jq \
+                  --arg IMAGE "${IMAGE}" \
+                  'del(
+                    .taskDefinitionArn,
+                    .revision,
+                    .status,
+                    .requiresAttributes,
+                    .compatibilities,
+                    .registeredAt,
+                    .registeredBy
+                  )
+                  | .containerDefinitions[].image = $IMAGE' \
+              > "/tmp/${FAMILY}.json"
+
+              NEW_ARN=$(aws ecs register-task-definition \
+                --region "${AWS_REGION}" \
+                --cli-input-json "file:///tmp/${FAMILY}.json" \
+                --query 'taskDefinition.taskDefinitionArn' \
+                --output text)
+
+              echo "Registered ${NEW_ARN}"
+
+              echo "export ${VARIABLE_NAME}=${NEW_ARN}" >> "$BASH_ENV"
+            }
+
+            register_task \
+              "ecs-plane-web" \
+              "${ECR_URI}:web-${IMAGE_TAG}" \
+              "ECS_PLANE_WEB_ARN"
+
+            register_task \
+              "ecs-plane-admin" \
+              "${ECR_URI}:admin-${IMAGE_TAG}" \
+              "ECS_PLANE_ADMIN_ARN"
+
+            register_task \
+              "ecs-plane-space" \
+              "${ECR_URI}:space-${IMAGE_TAG}" \
+              "ECS_PLANE_SPACE_ARN"
+
+            register_task \
+              "ecs-plane-live" \
+              "${ECR_URI}:live-${IMAGE_TAG}" \
+              "ECS_PLANE_LIVE_ARN"
+
+            register_task \
+              "ecs-plane-api" \
+              "${ECR_URI}:api-${IMAGE_TAG}" \
+              "ECS_PLANE_API_ARN"
+
+            register_task \
+              "ecs-plane-worker" \
+              "${ECR_URI}:api-${IMAGE_TAG}" \
+              "ECS_PLANE_WORKER_ARN"
+
+            register_task \
+              "ecs-plane-beat-worker" \
+              "${ECR_URI}:api-${IMAGE_TAG}" \
+              "ECS_PLANE_BEAT_WORKER_ARN"
+
+            register_task \
+              "ecs-plane-migrator" \
+              "${ECR_URI}:api-${IMAGE_TAG}" \
+              "ECS_PLANE_MIGRATOR_ARN"
+
+      # DATABASE MIGRATIONS
+      #
+      # Exactly ONE migrator is started.
+      # The migrator is responsible for running all database migrations.
+      # Deployment stops immediately if migration fails.
+      - run:
+          name: Run database migrator
+          command: |
+            set -e
+
+            NETWORK_CONFIG=$(aws ecs describe-services \
+              --cluster ecs-plane-cluster \
+              --services ecs-plane-api-service \
+              --region "${AWS_REGION}" \
+              --query 'services[0].networkConfiguration' \
+              --output json)
+
+            MIGRATOR_TASK_ARN=$(aws ecs run-task \
+              --cluster ecs-plane-cluster \
+              --task-definition "${ECS_PLANE_MIGRATOR_ARN}" \
+              --launch-type FARGATE \
+              --network-configuration "${NETWORK_CONFIG}" \
+              --region "${AWS_REGION}" \
+              --query 'tasks[0].taskArn' \
+              --output text)
+
+            if [ -z "${MIGRATOR_TASK_ARN}" ] || [ "${MIGRATOR_TASK_ARN}" = "None" ]; then
+              echo "Failed to start migrator task."
+              exit 1
+            fi
+
+            echo "Migrator task started:"
+            echo "${MIGRATOR_TASK_ARN}"
+
+            aws ecs wait tasks-stopped \
+              --cluster ecs-plane-cluster \
+              --tasks "${MIGRATOR_TASK_ARN}" \
+              --region "${AWS_REGION}"
+
+            MIGRATOR_EXIT_CODE=$(aws ecs describe-tasks \
+              --cluster ecs-plane-cluster \
+              --tasks "${MIGRATOR_TASK_ARN}" \
+              --region "${AWS_REGION}" \
+              --query 'tasks[0].containers[0].exitCode' \
+              --output text)
+
+            echo "Migrator exit code: ${MIGRATOR_EXIT_CODE}"
+
+            if [ "${MIGRATOR_EXIT_CODE}" != "0" ]; then
+              echo "Database migration failed."
+              echo "Stopping ECS deployment."
+              exit 1
+            fi
+
+            echo "Database migration completed successfully."
+
+      # BACKEND
+      - run:
+          name: Deploy API services
+          command: |
+            set -e
+
+            aws ecs update-service \
+              --cluster ecs-plane-cluster \
+              --service ecs-plane-api-service \
+              --task-definition "${ECS_PLANE_API_ARN}" \
+              --region "${AWS_REGION}" \
+              --no-cli-pager
+
+            aws ecs update-service \
+              --cluster ecs-plane-cluster \
+              --service ecs-plane-worker-service \
+              --task-definition "${ECS_PLANE_WORKER_ARN}" \
+              --region "${AWS_REGION}" \
+              --no-cli-pager
+
+            aws ecs update-service \
+              --cluster ecs-plane-cluster \
+              --service ecs-plane-beat-worker-service \
+              --task-definition "${ECS_PLANE_BEAT_WORKER_ARN}" \
+              --region "${AWS_REGION}" \
+              --no-cli-pager
+
+      # FRONTEND
+      - run:
+          name: Deploy frontend services
+          command: |
+            set -e
+
+            aws ecs update-service \
+              --cluster ecs-plane-cluster \
+              --service ecs-plane-web-service \
+              --task-definition "${ECS_PLANE_WEB_ARN}" \
+              --region "${AWS_REGION}" \
+              --no-cli-pager
+
+            aws ecs update-service \
+              --cluster ecs-plane-cluster \
+              --service ecs-plane-admin-service \
+              --task-definition "${ECS_PLANE_ADMIN_ARN}" \
+              --region "${AWS_REGION}" \
+              --no-cli-pager
+
+            aws ecs update-service \
+              --cluster ecs-plane-cluster \
+              --service ecs-plane-space-service \
+              --task-definition "${ECS_PLANE_SPACE_ARN}" \
+              --region "${AWS_REGION}" \
+              --no-cli-pager
+
+            aws ecs update-service \
+              --cluster ecs-plane-cluster \
+              --service ecs-plane-live-service \
+              --task-definition "${ECS_PLANE_LIVE_ARN}" \
+              --region "${AWS_REGION}" \
+              --no-cli-pager
+
+      # WAIT FOR ROLLING DEPLOYMENTS
+      - run:
+          name: Wait for ECS services to stabilise
+          command: |
+            set -e
+
+            aws ecs wait services-stable \
+              --cluster ecs-plane-cluster \
+              --services \
+                ecs-plane-api-service \
+                ecs-plane-worker-service \
+                ecs-plane-beat-worker-service \
+                ecs-plane-web-service \
+                ecs-plane-admin-service \
+                ecs-plane-space-service \
+                ecs-plane-live-service \
+              --region "${AWS_REGION}"
+
+            echo "All ECS services are stable."
+
+      # VERIFY ECS
+      - run:
+          name: Verify ECS deployment
+          command: |
+            aws ecs describe-services \
+              --cluster ecs-plane-cluster \
+              --services \
+                ecs-plane-api-service \
+                ecs-plane-worker-service \
+                ecs-plane-beat-worker-service \
+                ecs-plane-web-service \
+                ecs-plane-admin-service \
+                ecs-plane-space-service \
+                ecs-plane-live-service \
+              --region "${AWS_REGION}" \
+              --query 'services[].{Service:serviceName,Desired:desiredCount,Running:runningCount,Pending:pendingCount,TaskDefinition:taskDefinition}' \
+              --output table
+
+      # VERIFY PUBLIC PLANE API
+      - run:
+          name: Verify Plane API
+          command: |
+            set -e
+
+            echo "Checking https://${APP_DOMAIN}/api/instances/"
+
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              --retry 5 \
+              --retry-delay 10 \
+              "https://${APP_DOMAIN}/api/instances/" \
+              > /tmp/plane-api-response.json
+
+            echo "Plane API responded successfully."
+
+            cat /tmp/plane-api-response.json
+
+
+# ==============================================================
+# WORKFLOW
+# ==============================================================
 workflows:
-  build-and-push:
+  build-push-deploy:
     jobs:
       - build-and-push-images
+
+      - deploy-to-ecs:
+          requires:
+            - build-and-push-images
