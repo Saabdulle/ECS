@@ -4,17 +4,16 @@ orbs:
   aws-cli: circleci/aws-cli@5.4.1
 
 jobs:
-  test-aws-oidc:
+  build-and-push-images:
     docker:
-      - image: cimg/aws:2025.01
+      - image: cimg/base:current
 
-    environment:
-      AWS_REGION: eu-west-2
-      AWS_DEFAULT_REGION: eu-west-2
-      AWS_ROLE_ARN: arn:aws:iam::224399155690:role/ecs-deploy-circleci-role
+    resource_class: arm.medium
 
     steps:
       - checkout
+
+      - setup_remote_docker
 
       - aws-cli/setup:
           role_arn: ${AWS_ROLE_ARN}
@@ -22,25 +21,145 @@ jobs:
           role_session_name: circleci-ecs-project
 
       - run:
+          name: Configure AWS values
+          command: |
+            AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+              --query Account \
+              --output text)
+
+            echo "export AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}" >> "$BASH_ENV"
+            echo "export ECR_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}" >> "$BASH_ENV"
+            echo 'export IMAGE_TAG=${CIRCLE_SHA1:0:7}' >> "$BASH_ENV"
+
+      - run:
           name: Verify AWS identity
           command: |
             aws sts get-caller-identity
 
       - run:
-          name: Verify ECR access
+          name: Login to Amazon ECR
           command: |
-            aws ecr describe-repositories \
-              --repository-names ecs-plane \
-              --region eu-west-2
+            aws ecr get-login-password \
+              --region "${AWS_REGION}" \
+            | docker login \
+              --username AWS \
+              --password-stdin \
+              "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
       - run:
-          name: Verify ECS access
+          name: Build Web image
           command: |
-            aws ecs describe-clusters \
-              --clusters ecs-plane-cluster \
-              --region eu-west-2
+            docker build \
+              --platform linux/arm64 \
+              --build-arg VITE_API_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_API_BASE_PATH="/api" \
+              --build-arg VITE_ADMIN_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_ADMIN_BASE_PATH="/god-mode" \
+              --build-arg VITE_SPACE_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_SPACE_BASE_PATH="/spaces" \
+              --build-arg VITE_LIVE_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_LIVE_BASE_PATH="/live" \
+              --build-arg VITE_WEB_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_WEB_BASE_PATH="" \
+              -f docker/web.Dockerfile \
+              -t "${ECR_URI}:web-${IMAGE_TAG}" \
+              app/
+
+      - run:
+          name: Build Admin image
+          command: |
+            docker build \
+              --platform linux/arm64 \
+              --build-arg VITE_API_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_API_BASE_PATH="/api" \
+              --build-arg VITE_ADMIN_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_ADMIN_BASE_PATH="/god-mode" \
+              --build-arg VITE_SPACE_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_SPACE_BASE_PATH="/spaces" \
+              --build-arg VITE_LIVE_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_LIVE_BASE_PATH="/live" \
+              --build-arg VITE_WEB_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_WEB_BASE_PATH="" \
+              -f docker/admin.Dockerfile \
+              -t "${ECR_URI}:admin-${IMAGE_TAG}" \
+              app/
+
+      - run:
+          name: Build Space image
+          command: |
+            docker build \
+              --platform linux/arm64 \
+              --build-arg VITE_API_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_API_BASE_PATH="/api" \
+              --build-arg VITE_ADMIN_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_ADMIN_BASE_PATH="/god-mode" \
+              --build-arg VITE_SPACE_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_SPACE_BASE_PATH="/spaces" \
+              --build-arg VITE_LIVE_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_LIVE_BASE_PATH="/live" \
+              --build-arg VITE_WEB_BASE_URL="https://${APP_DOMAIN}" \
+              --build-arg VITE_WEB_BASE_PATH="" \
+              -f docker/space.Dockerfile \
+              -t "${ECR_URI}:space-${IMAGE_TAG}" \
+              app/
+
+      - run:
+          name: Build API image
+          command: |
+            docker build \
+              --platform linux/arm64 \
+              -f docker/api.Dockerfile \
+              -t "${ECR_URI}:api-${IMAGE_TAG}" \
+              app/
+
+      - run:
+          name: Build Live image
+          command: |
+            docker build \
+              --platform linux/arm64 \
+              -f docker/live.Dockerfile \
+              -t "${ECR_URI}:live-${IMAGE_TAG}" \
+              app/
+
+      - run:
+          name: Push Web image
+          command: |
+            docker push "${ECR_URI}:web-${IMAGE_TAG}"
+
+      - run:
+          name: Push Admin image
+          command: |
+            docker push "${ECR_URI}:admin-${IMAGE_TAG}"
+
+      - run:
+          name: Push Space image
+          command: |
+            docker push "${ECR_URI}:space-${IMAGE_TAG}"
+
+      - run:
+          name: Push API image
+          command: |
+            docker push "${ECR_URI}:api-${IMAGE_TAG}"
+
+      - run:
+          name: Push Live image
+          command: |
+            docker push "${ECR_URI}:live-${IMAGE_TAG}"
+
+      - run:
+          name: Verify images in ECR
+          command: |
+            aws ecr describe-images \
+              --repository-name "${ECR_REPOSITORY}" \
+              --region "${AWS_REGION}" \
+              --image-ids \
+                imageTag=web-${IMAGE_TAG} \
+                imageTag=admin-${IMAGE_TAG} \
+                imageTag=space-${IMAGE_TAG} \
+                imageTag=api-${IMAGE_TAG} \
+                imageTag=live-${IMAGE_TAG}
 
 workflows:
-  test-aws-oidc:
+  build-and-push:
     jobs:
-      - test-aws-oidc
+      - build-and-push-images
