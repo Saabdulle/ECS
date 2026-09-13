@@ -110,7 +110,7 @@ jobs:
               --platform linux/arm64 \
               -f docker/api.Dockerfile \
               -t "${ECR_URI}:api-${IMAGE_TAG}" \
-              app/
+              app/apps/api/
 
       - run:
           name: Build Live image
