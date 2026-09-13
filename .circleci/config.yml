@@ -43,4 +43,4 @@ jobs:
 workflows:
   test-aws-oidc:
     jobs:
-      - aws-oidc-test
+      - test-aws-oidc
