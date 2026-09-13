@@ -1,0 +1,46 @@
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@5.4.1
+
+jobs:
+  test-aws-oidc:
+    docker:
+      - image: cimg/aws:2025.01
+
+    environment:
+      AWS_REGION: eu-west-2
+      AWS_DEFAULT_REGION: eu-west-2
+      AWS_ROLE_ARN: arn:aws:iam::224399155690:role/ecs-deploy-circleci-role
+
+    steps:
+      - checkout
+
+      - aws-cli/setup:
+          role_arn: ${AWS_ROLE_ARN}
+          region: ${AWS_REGION}
+          role_session_name: circleci-ecs-project
+
+      - run:
+          name: Verify AWS identity
+          command: |
+            aws sts get-caller-identity
+
+      - run:
+          name: Verify ECR access
+          command: |
+            aws ecr describe-repositories \
+              --repository-names ecs-plane \
+              --region eu-west-2
+
+      - run:
+          name: Verify ECS access
+          command: |
+            aws ecs describe-clusters \
+              --clusters ecs-plane-cluster \
+              --region eu-west-2
+
+workflows:
+  test-aws-oidc:
+    jobs:
+      - aws-oidc-test
