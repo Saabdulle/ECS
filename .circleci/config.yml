@@ -515,6 +515,42 @@ jobs:
 
             cat /tmp/plane-api-response.json
 
+  # Clean up Terraform resources
+  terraform-destroy:
+    docker:
+      - image: cimg/base:current
+
+    steps:
+      - checkout
+
+      - aws-cli/setup:
+          role_arn: ${AWS_ROLE_ARN}
+          region: ${AWS_REGION}
+          role_session_name: circleci-terraform-destroy
+
+      - run:
+          name: Install Terraform
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y wget unzip
+
+            wget https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip
+            unzip terraform_1.9.8_linux_amd64.zip
+            sudo mv terraform /usr/local/bin/terraform
+
+            terraform version
+
+      - run:
+          name: Terraform Init
+          command: |
+            cd infra
+            terraform init
+
+      - run:
+          name: Terraform Destroy
+          command: |
+            cd infra
+            terraform destroy -auto-approve
 # WORKFLOW
 workflows:
   build-push-deploy:
@@ -524,3 +560,12 @@ workflows:
       - deploy-to-ecs:
           requires:
             - build-and-push-images
+      
+      - approve-destroy:
+          type: approval
+          requires:
+            - deploy-to-ecs
+
+      - terraform-destroy:
+          requires:
+            - approve-destroy
