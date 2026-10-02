@@ -6,9 +6,6 @@ resource "aws_ecr_repository" "plane_ecr" {
   image_scanning_configuration {
     scan_on_push = true
   }
-  lifecycle {
-    prevent_destroy = true
-  }
   tags = {
     Name = var.repository_name
   }
