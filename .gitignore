@@ -127,7 +127,7 @@ infra/*.tfstate.*
 infra/crash.log
 infra/crash.*.log
 infra/*.tfplan
-*.tfvars
+terraform.tfvars
 **/.terraform/*
 *.tfstate
 *.tfstate.*

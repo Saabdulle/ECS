@@ -49,10 +49,10 @@ module "ecs" {
   space_image_tag        = var.space_image_tag
 
   api_target_group_arn = module.alb.api_target_group_arn
-  # api_image_tag        = var.api_image_tag
+  api_image_tag        = var.api_image_tag
 
   live_target_group_arn = module.alb.live_target_group_arn
-  # live_image_tag        = var.live_image_tag
+  live_image_tag        = var.live_image_tag
   db_endpoint = module.rds.db_endpoint
   db_port     = module.rds.db_port
   db_name     = var.db_name
