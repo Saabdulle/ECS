@@ -20,7 +20,7 @@ I chose Plane because I use it to manage my dissertation timeline. It helps me b
 ## Contents
 
 - [Overview of my setup](#overview-of-my-setup)
-- [Architecture](#architecture)
+- [Project Architecture](#project-architecture)
 - [Application services](#application-services)
 - [CI/CD workflow](#cicd-workflow)
 - [IAM and CircleCI authentication](#iam-and-circleci-authentication)
@@ -33,9 +33,9 @@ I chose Plane because I use it to manage my dissertation timeline. It helps me b
 
 My Terraform design places the application in a custom VPC across three Availability Zones, with three public subnets and three private subnets. An internet-facing Application Load Balancer accepts HTTPS requests in the public subnets and forwards them to Plane workloads running on ECS Fargate in the private subnets.
 
-My NAT gateway is located in Public Subnet 1 (`10.0.1.0/24`) in `eu-west-2a`. The private subnets use routes pointing to this gateway when their workloads need internet access. The gateway forwards that traffic through the VPC internet gateway, allowing the ECS tasks to make outbound connections while remaining in private subnets. I chose one NAT gateway to reduce costs; this means outbound internet access depends on that gateway and its Availability Zone.
+My NAT gateway is located in Public Subnet 1 (`10.0.1.0/24`) in `eu-west-2a`. The private subnets use routes pointing to this gateway when their workloads need internet access. The gateway forwards that traffic through the VPC internet gateway, allowing the ECS tasks to make outbound connections while remaining in private subnets. I chose one NAT gateway to reduce costs while maintaining outbound internet access.
 
-I chose ECS Fargate because Plane has several connected services: user interfaces, an API, real-time collaboration and background workers. Fargate lets me run those containers without managing the underlying EC2 hosts. ECS also provides service scheduling, health monitoring and rolling deployments. This gives me practical experience with container orchestration while keeping the infrastructure manageable for a personal project. I am the main user of the environment, although Plane is also suitable for students, researchers and small teams organising their work.
+I chose ECS Fargate because Plane has several connected services: user interfaces, an API, real-time collaboration, background workers and database migrator. Fargate lets me run those containers without managing the underlying EC2 hosts. ECS also provides service scheduling, health monitoring and rolling deployments. This gives me practical experience with container orchestration while keeping the infrastructure manageable for a personal project. I am the main user of the environment, although Plane is also suitable for students, researchers and small teams organising their work.
 
 | Component | Role in my design |
 | --- | --- |
@@ -45,25 +45,26 @@ I chose ECS Fargate because Plane has several connected services: user interface
 | Application Load Balancer | Routes incoming HTTPS requests to healthy application targets |
 | ECS Fargate | Runs Plane containers without EC2 host administration |
 | ECR | Stores application images for deployment |
+| Cloudflare | Hosts the parent domain's DNS and delegates the application subdomain to Route 53 |
 | Route 53 and ACM | Provide application DNS and the ALB's TLS certificate |
 | NAT gateway | Provides outbound internet connectivity for private workloads |
 | RDS PostgreSQL | Provides the application's relational database |
 | ElastiCache Valkey | Provides Redis-compatible caching |
 | RabbitMQ on ECS | Provides messaging for background processing |
-| Object storage | Holds uploaded application files |
+| Object storage | Stores upload application files |
 | CloudWatch | Collects container logs for troubleshooting |
 | GitHub Actions | Validates changes pushed to GitHub |
 | CircleCI | Builds container images and initiates ECS deployments |
 | IAM OIDC provider and deployment role | Establish CircleCI's AWS access through temporary credentials |
 | S3 remote state | Stores Terraform state centrally with state locking |
 
-## Architecture
+## Project Architecture
 
 ![Project Architecture](/Images/ECS%20Project%20Architecture.png "Project Architecture")
 
 Route 53 resolves the application domain to the ALB. The browser connects to the ALB over HTTPS, using the certificate issued through ACM. The ALB then routes the request to a healthy application target in the private subnets.
 
-The NAT gateway serves a separate purpose: it allows private workloads to initiate outbound internet connections. Application requests reach the containers through the ALB. Security groups control which connections are permitted between the load balancer, application and supporting services.
+The NAT gateway serves a separate purpose as it allows private workloads to initiate outbound internet connections. Application requests reach the containers through the ALB. Security groups control which connections are permitted between the load balancer, application and other services.
 
 CircleCI runs outside the VPC. Its access to ECR and the ECS deployment APIs uses an IAM OpenID Connect (OIDC) provider and a deployment role at the AWS account level. These are separate from the application's inbound and outbound network paths.
 
@@ -118,7 +119,7 @@ The CI/CD design uses OIDC federation for CircleCI's AWS access, avoiding stored
 | Role trust | CircleCI provider, with audience and project restrictions |
 | Role assumption action | `sts:AssumeRoleWithWebIdentity` |
 
-The organisation and project IDs are CircleCI identifiers, separate from the AWS account ID. The role's trust policy controls which jobs can assume it; its permissions policy controls the AWS operations those jobs can perform.
+The organisation and project IDs are CircleCI identifiers, separate from the AWS account ID. The role's trust policy controls which jobs can assume it while the permissions policy controls the AWS operations those jobs can perform.
 
 AWS Security Token Service (STS) validates the job's token against the configured trust relationship and returns temporary credentials. CircleCI uses those credentials for the permitted build and deployment operations.
 
@@ -138,8 +139,6 @@ Terraform provisioning uses the AWS identity running Terraform. Infrastructure p
 
 
 ## Reproducing the setup
-
-The following sections document my setup sequence. The repository URL, state-bucket name and resource identifiers are deployment-specific. The commands assume the Terraform root is `Terraform/`.
 
 ### 1. Tools and AWS access
 
@@ -193,7 +192,7 @@ Credentials and secret values remain outside version control. Backend settings a
 With the environment values configured, the Terraform commands are:
 
 ```bash
-cd Terraform
+cd infra
 terraform init
 terraform fmt -check -recursive
 terraform validate
@@ -201,7 +200,7 @@ terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
-`terraform init` initialises the backend and providers. The formatting and validation checks run before the plan. I review the saved plan before applying it so that the changes being applied are the changes I have inspected.
+`terraform init` initialises the backend and providers. The formatting and validation checks run before the plan. Review the saved plan before applying it so that the changes being applied are the changes you have inspected.
 
 The initial deployment depends on image availability: ECR repositories and initial images must be ready before ECS can start tasks that reference them. The CircleCI OIDC provider and deployment role must also exist before the first authenticated pipeline run.
 
@@ -225,7 +224,7 @@ The deployment is ready for application testing when the migration task has succ
 
 ## Deployment verification and screenshots
 
-I verified the application through its HTTPS domain during the initial console deployment. That environment has since been removed. Screenshots of the complete Terraform deployment are pending.
+I verified the application through its HTTPS domain during the initial console deployment. That environment has since been removed. Screenshots of the complete Terraform deployment can be found in Images folder.
 
 My verification covers the following:
 
@@ -244,11 +243,9 @@ My public endpoint checks are:
 
 ```bash
 curl -I https://tm.saeedproject.com
-curl -I https://tm.saeedproject.com/god-mode
+curl -I https://tm.saeedproject.com/api/users/session/
 curl -I https://tm.saeedproject.com/god-mode/
 ```
-
-During the console deployment, I found that `/god-mode` redirected to `http://tm.saeedproject.com:3000/god-mode/`, while the trailing-slash route worked. Correcting and retesting this behaviour is part of my Terraform deployment work.
 
 ## Challenges and lessons learned
 
@@ -256,31 +253,7 @@ During the console deployment, I found that `/god-mode` redirected to `http://tm
 
 I learned that a running container can still fail a health check. The route, listening port and expected response all matter: a missing endpoint, authentication requirement or redirect can make a check fail even when the process is running.
 
-During the backend investigation, the logs showed `GET /api/users/session/` returning HTTP `200`. This confirmed that the route responded during that deployment, but did not establish the health of every application dependency.
-
-My endpoint investigation considers:
-
-| Item | What I check |
-| --- | --- |
-| Path | The route exists in the deployed version of the service |
-| Port and protocol | The check reaches the intended application listener |
-| Response | The returned status matches the configured success code |
-| Authentication and redirects | The route behaves predictably without a browser session |
-| Reachability | The ALB can reach the target through the relevant security groups |
-| Application readiness | What a successful response actually proves about the service |
-
-I also learned to check which Plane edition the documentation describes. The dedicated `/api/live/`, `/api/ready/` and `/api/health/` endpoints are documented for Commercial Edition. My project uses Community Edition, and my request to `/api/health` returned `404`. Community Edition provides a basic API root check at `/`, rather than those dedicated probes.
-
-The basic API check runs directly against the API container's listening port, from inside the container with `curl` available:
-
-```bash
-curl -i http://127.0.0.1:8000/
-```
-
-The documented response is `200` with `{"status":"OK"}`. This is a basic process-response check; it does not establish database or cache readiness. The public domain's `/` route can lead to the web frontend, so a successful homepage response does not verify the API root. The API target group's health-check path and port must address the API service directly.
-
-ALB HTTP health checks use `GET`, so I use GET requests when checking endpoint behaviour. The public header checks above use `curl -I`, which sends `HEAD`.
-
+Plane’s Commercial Edition provides dedicated health-check endpoints, including `/api/live/`, `/api/ready/` and `/api/health/`. Community Edition does not include these dedicated probes, although it provides a basic API root check at `/`. In my deployment, I used `/api/users/session/` as the API target group’s health-check path, with HTTP `200` as the expected success code. The logs confirmed successful responses from this endpoint, demonstrating that the API could respond to requests without establishing the health of every application dependency.
 
 ### Adjusting the health-check threshold
 
@@ -304,7 +277,7 @@ This is a personal learning environment, so I balance availability with running 
 When I no longer need the environment, my clean-up sequence is:
 
 ```bash
-# From the Terraform root
+# From the infra root
 terraform plan -destroy -out=destroy.tfplan
 terraform apply destroy.tfplan
 ```

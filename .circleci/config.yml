@@ -145,8 +145,6 @@ jobs:
               app/
 
       # API
-      #
-      # Important:
       # API uses app/apps/api as its Docker build context.
       - run:
           name: Build API image
@@ -344,8 +342,7 @@ jobs:
 
       # DATABASE MIGRATIONS
       #
-      # Exactly ONE migrator is started.
-      # The migrator is responsible for running all database migrations.
+      # Exactly ONE migrator is started which is responsible for running all database migrations.
       # Deployment stops immediately if migration fails.
       - run:
           name: Run database migrator
@@ -518,10 +515,7 @@ jobs:
 
             cat /tmp/plane-api-response.json
 
-
-# ==============================================================
 # WORKFLOW
-# ==============================================================
 workflows:
   build-push-deploy:
     jobs:
