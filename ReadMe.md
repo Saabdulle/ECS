@@ -137,8 +137,19 @@ The deployment role's permission requirements cover ECR authentication and image
 
 Terraform provisioning uses the AWS identity running Terraform. Infrastructure permissions are separate from the release permissions described above.
 
-
 ## Reproducing the setup
+
+### Running the Application Locally
+
+Copy and configure the example environment file from `app/.env.example` to `app/.env`, update the required local values, then start the Plane stack with Docker Compose:
+
+```bash
+cd app
+# To start Plane stack container:
+docker compose up -d --build
+# To stop and remove container:
+docker compose down
+```
 
 ### 1. Tools and AWS access
 
