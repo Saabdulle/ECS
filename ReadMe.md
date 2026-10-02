@@ -243,7 +243,7 @@ My public endpoint checks are:
 
 ```bash
 curl -I https://tm.saeedproject.com
-curl -I https://tm.saeedproject.com/api/users/session/
+curl -I https://tm.saeedproject.com/api/instances/
 curl -I https://tm.saeedproject.com/god-mode/
 ```
 
@@ -253,7 +253,7 @@ curl -I https://tm.saeedproject.com/god-mode/
 
 I learned that a running container can still fail a health check. The route, listening port and expected response all matter: a missing endpoint, authentication requirement or redirect can make a check fail even when the process is running.
 
-Plane’s Commercial Edition provides dedicated health-check endpoints, including `/api/live/`, `/api/ready/` and `/api/health/`. Community Edition does not include these dedicated probes, although it provides a basic API root check at `/`. In my deployment, I used `/api/users/session/` as the API target group’s health-check path, with HTTP `200` as the expected success code. The logs confirmed successful responses from this endpoint, demonstrating that the API could respond to requests without establishing the health of every application dependency.
+Plane’s Commercial Edition provides dedicated health-check endpoints, including `/api/live/`, `/api/ready/` and `/api/health/`. Community Edition does not include these dedicated probes, although it provides a basic API root check at `/`. In my deployment, I used `/api/instances/` as the API target group’s health-check path, with HTTP `200` as the expected success code. The logs confirmed successful responses from this endpoint, demonstrating that the API could respond to requests without establishing the health of every application dependency.
 
 ### Adjusting the health-check threshold
 
