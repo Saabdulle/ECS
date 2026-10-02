@@ -53,11 +53,11 @@ module "ecs" {
 
   live_target_group_arn = module.alb.live_target_group_arn
   live_image_tag        = var.live_image_tag
-  db_endpoint = module.rds.db_endpoint
-  db_port     = module.rds.db_port
-  db_name     = var.db_name
-  db_username = var.db_username
-  db_password = var.db_password
+  db_endpoint           = module.rds.db_endpoint
+  db_port               = module.rds.db_port
+  db_name               = var.db_name
+  db_username           = var.db_username
+  db_password           = var.db_password
 
   redis_endpoint = module.redis.redis_endpoint
   redis_port     = module.redis.redis_port
