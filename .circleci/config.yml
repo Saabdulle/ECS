@@ -4,8 +4,98 @@ orbs:
   aws-cli: circleci/aws-cli@5.4.1
 
 jobs:
-  # BUILD AND PUSH DOCKER IMAGES
-  build-and-push-images:
+  # Terraform job
+  terraform:
+    parameters:
+      action:
+        type: enum
+        enum:
+          - apply
+          - destroy
+
+    docker:
+      - image: cimg/base:current
+
+    steps:
+      - checkout
+
+      - aws-cli/setup:
+          role_arn: ${AWS_ROLE_ARN}
+          region: ${AWS_REGION}
+          role_session_name: circleci-terraform-<< parameters.action >>
+
+      - run:
+          name: Install Terraform
+          command: |
+            set -e
+
+            sudo apt-get update
+            sudo apt-get install -y wget unzip
+
+            wget https://releases.hashicorp.com/terraform/1.16.5/terraform_1.16.5_linux_amd64.zip
+            unzip terraform_1.16.5_linux_amd64.zip
+            sudo mv terraform /usr/local/bin/terraform
+
+            terraform version
+
+      - run:
+          name: Terraform Init
+          command: |
+            set -e
+
+            cd infra
+            terraform init
+
+      - run:
+          name: Terraform Validate
+          command: |
+            set -e
+
+            cd infra
+            terraform validate
+
+      # Apply
+      - when:
+          condition:
+            equal:
+              - apply
+              - << parameters.action >>
+
+          steps:
+            - run:
+                name: Terraform Plan
+                command: |
+                  set -e
+
+                  cd infra
+                  terraform plan -out=tfplan
+
+            - run:
+                name: Terraform Apply
+                command: |
+                  set -e
+
+                  cd infra
+                  terraform apply -auto-approve tfplan
+
+      # Destroy
+      - when:
+          condition:
+            equal:
+              - destroy
+              - << parameters.action >>
+
+          steps:
+            - run:
+                name: Terraform Destroy
+                command: |
+                  set -e
+
+                  cd infra
+                  terraform destroy -auto-approve
+
+  # Build and deploy job
+  build-and-deploy:
     docker:
       - image: cimg/base:current
 
@@ -19,7 +109,7 @@ jobs:
       - aws-cli/setup:
           role_arn: ${AWS_ROLE_ARN}
           region: ${AWS_REGION}
-          role_session_name: circleci-ecs-build
+          role_session_name: circleci-ecs-deploy
 
       - run:
           name: Validate environment variables
@@ -49,7 +139,7 @@ jobs:
             echo "All environment variables are present."
 
       - run:
-          name:  AWS values configuration
+          name: Configure AWS values
           command: |
             set -e
 
@@ -78,7 +168,7 @@ jobs:
               --password-stdin \
               "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-      # WEB
+      # Build Web image
       - run:
           name: Build Web image
           command: |
@@ -100,7 +190,7 @@ jobs:
               -t "${ECR_URI}:web-${IMAGE_TAG}" \
               app/
 
-      # ADMIN / GOD MODE
+      # Build Admin image
       - run:
           name: Build Admin image
           command: |
@@ -122,7 +212,7 @@ jobs:
               -t "${ECR_URI}:admin-${IMAGE_TAG}" \
               app/
 
-      # SPACE
+      # Build Space image
       - run:
           name: Build Space image
           command: |
@@ -144,8 +234,7 @@ jobs:
               -t "${ECR_URI}:space-${IMAGE_TAG}" \
               app/
 
-      # API
-      # API uses app/apps/api as its Docker build context.
+      # Build API image
       - run:
           name: Build API image
           command: |
@@ -157,7 +246,7 @@ jobs:
               -t "${ECR_URI}:api-${IMAGE_TAG}" \
               app/apps/api/
 
-      # LIVE
+      # Build Live image
       - run:
           name: Build Live image
           command: |
@@ -169,7 +258,7 @@ jobs:
               -t "${ECR_URI}:live-${IMAGE_TAG}" \
               app/
 
-      # PUSH IMAGES
+      # Push images to ECR
       - run:
           name: Push Web image
           command: |
@@ -210,54 +299,7 @@ jobs:
                 imageTag=api-${IMAGE_TAG} \
                 imageTag=live-${IMAGE_TAG}
 
-
-  # CD - DEPLOY NEW IMAGES TO ECS
-  deploy-to-ecs:
-    docker:
-      - image: cimg/aws:2025.01
-
-    steps:
-      - checkout
-
-      - aws-cli/setup:
-          role_arn: ${AWS_ROLE_ARN}
-          region: ${AWS_REGION}
-          role_session_name: circleci-ecs-deploy
-
-      - run:
-          name: verify jq
-          command: |
-            jq --version
-
-      - run:
-          name: Configure deployment values
-          command: |
-            set -e
-
-            AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
-              --query Account \
-              --output text)
-
-            echo "export AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}" >> "$BASH_ENV"
-            echo "export ECR_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}" >> "$BASH_ENV"
-            echo 'export IMAGE_TAG=${CIRCLE_SHA1:0:7}' >> "$BASH_ENV"
-
-      - run:
-          name: Verify deployment images exist
-          command: |
-            set -e
-
-            aws ecr describe-images \
-              --repository-name "${ECR_REPOSITORY}" \
-              --region "${AWS_REGION}" \
-              --image-ids \
-                imageTag=web-${IMAGE_TAG} \
-                imageTag=admin-${IMAGE_TAG} \
-                imageTag=space-${IMAGE_TAG} \
-                imageTag=api-${IMAGE_TAG} \
-                imageTag=live-${IMAGE_TAG}
-
-      # CREATE NEW TASK DEFINITION REVISIONS
+      # Register ECS task definitions with new images
       - run:
           name: Register new ECS task definitions
           command: |
@@ -340,10 +382,8 @@ jobs:
               "${ECR_URI}:api-${IMAGE_TAG}" \
               "ECS_PLANE_MIGRATOR_ARN"
 
-      # DATABASE MIGRATIONS
-      #
-      # Exactly ONE migrator is started which is responsible for running all database migrations.
-      # Deployment stops immediately if migration fails.
+
+      # Database migration
       - run:
           name: Run database migrator
           command: |
@@ -370,8 +410,7 @@ jobs:
               exit 1
             fi
 
-            echo "Migrator task started:"
-            echo "${MIGRATOR_TASK_ARN}"
+            echo "Migrator task started: ${MIGRATOR_TASK_ARN}"
 
             aws ecs wait tasks-stopped \
               --cluster ecs-plane-cluster \
@@ -385,17 +424,14 @@ jobs:
               --query 'tasks[0].containers[0].exitCode' \
               --output text)
 
-            echo "Migrator exit code: ${MIGRATOR_EXIT_CODE}"
-
             if [ "${MIGRATOR_EXIT_CODE}" != "0" ]; then
               echo "Database migration failed."
-              echo "Stopping ECS deployment."
               exit 1
             fi
 
             echo "Database migration completed successfully."
 
-      # BACKEND
+      # Deploy backend services
       - run:
           name: Deploy API services
           command: |
@@ -422,7 +458,7 @@ jobs:
               --region "${AWS_REGION}" \
               --no-cli-pager
 
-      # FRONTEND
+      # Deploy frontend services
       - run:
           name: Deploy frontend services
           command: |
@@ -456,7 +492,7 @@ jobs:
               --region "${AWS_REGION}" \
               --no-cli-pager
 
-      # WAIT FOR ROLLING DEPLOYMENTS
+      # Wait for deployment to stabilise
       - run:
           name: Wait for ECS services to stabilise
           command: |
@@ -476,7 +512,7 @@ jobs:
 
             echo "All ECS services are stable."
 
-      # VERIFY ECS
+        # Verify ECS deployment
       - run:
           name: Verify ECS deployment
           command: |
@@ -494,7 +530,7 @@ jobs:
               --query 'services[].{Service:serviceName,Desired:desiredCount,Running:runningCount,Pending:pendingCount,TaskDefinition:taskDefinition}' \
               --output table
 
-      # VERIFY PUBLIC PLANE API
+      # Verify Plane API
       - run:
           name: Verify Plane API
           command: |
@@ -515,57 +551,26 @@ jobs:
 
             cat /tmp/plane-api-response.json
 
-  # Clean up Terraform resources
-  terraform-destroy:
-    docker:
-      - image: cimg/base:current
-
-    steps:
-      - checkout
-
-      - aws-cli/setup:
-          role_arn: ${AWS_ROLE_ARN}
-          region: ${AWS_REGION}
-          role_session_name: circleci-terraform-destroy
-
-      - run:
-          name: Install Terraform
-          command: |
-            sudo apt-get update
-            sudo apt-get install -y wget unzip
-
-            wget https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip
-            unzip terraform_1.9.8_linux_amd64.zip
-            sudo mv terraform /usr/local/bin/terraform
-
-            terraform version
-
-      - run:
-          name: Terraform Init
-          command: |
-            cd infra
-            terraform init
-
-      - run:
-          name: Terraform Destroy
-          command: |
-            cd infra
-            terraform destroy -auto-approve
 # WORKFLOW
 workflows:
   build-push-deploy:
     jobs:
-      - build-and-push-images
 
-      - deploy-to-ecs:
+      - terraform:
+          name: terraform-apply
+          action: apply
+
+      - build-and-deploy:
           requires:
-            - build-and-push-images
-      
+            - terraform-apply
+
       - approve-destroy:
           type: approval
           requires:
-            - deploy-to-ecs
+            - build-and-deploy
 
-      - terraform-destroy:
+      - terraform:
+          name: terraform-destroy
+          action: destroy
           requires:
             - approve-destroy
