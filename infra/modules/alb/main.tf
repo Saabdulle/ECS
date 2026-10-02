@@ -118,7 +118,7 @@ resource "aws_lb_target_group" "plane_api_tg" {
   target_type = "ip"
 
   health_check {
-    path                = "/api/users/session/"
+    path                = "/api/instances/"
     protocol            = "HTTP"
     matcher             = "200-399"
     interval            = 30
