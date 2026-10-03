@@ -24,6 +24,7 @@ module "acm" {
   source       = "./modules/acm"
   project_name = var.project_name
   domain_name  = var.domain_name
+  route53_zone_id = module.route53.plane_hosted_zone_id
 }
 
 module "ecs" {
