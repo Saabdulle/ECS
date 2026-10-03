@@ -1,5 +1,6 @@
 resource "aws_route53_zone" "plane_hosted_zone" {
-  name = var.domain_name
+  name          = var.domain_name
+  force_destroy = true
 
   tags = {
     Name = "${var.project_name}-hosted-zone"

@@ -28,6 +28,7 @@ module "acm" {
 
 module "ecs" {
   source = "./modules/ecs"
+  depends_on = [module.alb]
 
   project_name       = var.project_name
   aws_region         = var.aws_region
